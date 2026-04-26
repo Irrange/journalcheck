@@ -1,5 +1,7 @@
 ﻿# journalcheck
 
+[English](README.md) | [中文](README.zh-CN.md)
+
 Track review status from 3 journal systems:
 
 - `aha`: AHA / eJournalPress
