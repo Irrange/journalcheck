@@ -6,6 +6,19 @@ Track review status from 3 journal systems:
 - `em`: Editorial Manager
 - `bmc`: Springer Nature / BMC submission details
 
+## Quick Start
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+copy .env.example .env
+python main_gui.py
+```
+
+Then fill your journal accounts and notification settings in the GUI, or edit
+`.env` directly before starting the app.
+
 ## GUI
 
 Start the desktop window in one of these ways:
@@ -130,3 +143,8 @@ Supported channels:
 - EM only keeps active submissions
 - BMC also records invited / accepted / returned reviewer counts
 - AHA past review comments URL is captured and the program tries to extract readable comment blocks when available
+
+## Support More Platforms
+
+If you need support for another submission platform, please open an issue and
+include the platform name plus the status page or workflow you want to track.
