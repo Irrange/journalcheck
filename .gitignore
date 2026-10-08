@@ -23,4 +23,5 @@ JournalCheck.exe
 *.lnk
 *.egg-info/
 .DS_Store
+.runtime/
 Thumbs.db

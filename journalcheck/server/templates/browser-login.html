@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="base-path" content="{{ base_path }}">
+  <meta name="browser-session" content="{{ browser_id }}">
+  <title>{{ journal_name }} · 更新登录会话</title>
+  <link rel="icon" href="{{ base_path }}/static/journalcheck.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="{{ base_path }}/static/browser-login.css?v=20261003-session1">
+  <script type="module" src="{{ base_path }}/static/browser-login.js?v=20261003-session1"></script>
+</head>
+<body>
+  <main>
+    <header>
+      <div><h1>{{ journal_name }} · 更新登录会话</h1>
+      <p>这是 DS 上的官方投稿网站。完成安全验证和登录后保存会话，供后台检查复用。</p></div>
+      <a href="{{ base_path }}/#accounts/{{ account_id }}">返回账号管理</a>
+    </header>
+    <div class="controls">
+      <button type="button" id="fill">填入已保存账号</button>
+      <button type="button" id="save" class="primary">保存会话</button>
+      <button type="button" id="cancel">关闭登录窗口</button>
+    </div>
+    <p id="status" role="status" aria-live="polite">正在连接私有浏览器…</p>
+    <p class="hint">先完成官方人机验证，再填入账号并在浏览器里点击登录。进入主页或作者中心后保存。窗口最多保留 15 分钟；保存后返回账号管理“验证并启用”。</p>
+    <div id="desktop" tabindex="0" aria-label="官方网站远程浏览器"></div>
+  </main>
+</body>
+</html>

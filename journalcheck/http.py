@@ -34,7 +34,8 @@ def make_session(with_retry: bool = True) -> requests.Session:
         read=5,
         backoff_factor=1.2,
         status_forcelist=(408, 429, 500, 502, 503, 504),
-        allowed_methods=frozenset({"GET", "POST"}),
+        # Login requests are POSTs and must never be replayed implicitly.
+        allowed_methods=frozenset({"GET"}),
         raise_on_status=False,
         respect_retry_after_header=True,
     )

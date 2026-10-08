@@ -8,29 +8,40 @@ from journalcheck.base import SiteChecker
 from journalcheck.http import make_session
 from journalcheck.models import SubmissionStatus
 from journalcheck.utils import clean_text, is_active_status
+from journalcheck.server.adapters import AuthenticationError, ParseError
 
 
 class BMCChecker(SiteChecker):
     site_name = "bmc"
 
-    def __init__(self, submission_url: str, username: str, password: str, site_name: str = "bmc") -> None:
+    def __init__(self, submission_url: str, username: str, password: str, site_name: str = "bmc", session=None, include_inactive: bool = False, strict: bool = False) -> None:
         self.submission_url = submission_url
         self.username = username
         self.password = password
         self.site_name = site_name
-        self.session = make_session()
+        self.session = session if session is not None else make_session()
+        self.include_inactive = include_inactive
+        self.strict = strict
 
     def check(self) -> list[SubmissionStatus]:
         final_page = self._login()
+        return self.parse_page(final_page)
+
+    def parse_page(self, final_page) -> list[SubmissionStatus]:
         soup = BeautifulSoup(final_page.text, "lxml")
 
         title = self._extract_submission_title(soup)
-        status = clean_text(
-            soup.select_one("[data-current-step-description]").get_text(" ", strip=True)
-            if soup.select_one("[data-current-step-description]")
-            else ""
-        )
-        if not is_active_status(status):
+        status_node = soup.select_one("[data-current-step-description]")
+        status = clean_text(status_node.get_text(" ", strip=True) if status_node else "")
+        empty_node = soup.select_one("[data-test='no-submissions']")
+        if self.strict and empty_node and "no submission" in clean_text(empty_node.get_text(" ", strip=True)).lower():
+            return []
+        submission_id = self._extract_submission_id(final_page.url, soup)
+        if self.strict and (not status_node or not status):
+            raise ParseError("BMC submission status selector was not recognized.")
+        if self.strict and not submission_id:
+            raise ParseError("BMC submission ID was not recognized.")
+        if not self.include_inactive and not is_active_status(status):
             return []
 
         notes = [
@@ -46,7 +57,6 @@ class BMCChecker(SiteChecker):
             for tag in soup.select("[data-test='your-submission-manuscript-file']")
         ]
         journal = self._extract_journal(soup)
-        submission_id = self._extract_submission_id(final_page.url, soup)
         reviewer_invited, reviewer_accepted, review_reports_received, reviewer_display = self._extract_reviewer_counts(news, notes)
 
         metadata: dict[str, object] = {}
@@ -76,9 +86,13 @@ class BMCChecker(SiteChecker):
         first_page = self.session.get(self.submission_url, timeout=40, allow_redirects=True)
         first_page.raise_for_status()
         first_soup = BeautifulSoup(first_page.text, "lxml")
+        if first_soup.select_one('[data-current-step-description]'):
+            return first_page
 
         first_form = first_soup.find("form")
         if first_form is None:
+            if self.strict:
+                raise ParseError("BMC login email form was not recognized.")
             raise RuntimeError("BMC login email form was not found.")
         first_action = "https://idp-personal-authenticator.springernature.com" + first_form.get("action", "")
         first_payload = {
@@ -94,6 +108,8 @@ class BMCChecker(SiteChecker):
 
         second_form = second_soup.find("form")
         if second_form is None:
+            if self.strict:
+                raise AuthenticationError("BMC password form was not reached; login could not be confirmed.")
             raise RuntimeError("BMC login password form was not found.")
         second_action = "https://idp-personal-authenticator.springernature.com" + second_form.get("action", "")
         second_payload = {
@@ -106,6 +122,8 @@ class BMCChecker(SiteChecker):
         final_page = self.session.post(second_action, data=second_payload, timeout=40, allow_redirects=True)
         final_page.raise_for_status()
         if "Submission Details" not in final_page.text:
+            if self.strict:
+                raise AuthenticationError(f"BMC login could not be confirmed for {self.site_name}.")
             raise RuntimeError(f"BMC login appears to have failed for {self.site_name}.")
         return final_page
 
@@ -133,7 +151,8 @@ class BMCChecker(SiteChecker):
 
     @staticmethod
     def _extract_journal(soup: BeautifulSoup) -> str:
-        title = clean_text(soup.select_one("[data-test='page-title']").get_text(" ", strip=True))
+        node = soup.select_one("[data-test='page-title']")
+        title = clean_text(node.get_text(" ", strip=True) if node else '')
         if ":" in title:
             return clean_text(title.split(":", 1)[1])
         return title

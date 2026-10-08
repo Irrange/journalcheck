@@ -1,4 +1,6 @@
-﻿from __future__ import annotations
+from __future__ import annotations
+
+import re
 
 from urllib.parse import parse_qsl, urlencode, urljoin, urlparse, urlsplit, urlunparse
 
@@ -8,25 +10,30 @@ from journalcheck.base import SiteChecker
 from journalcheck.http import make_session
 from journalcheck.models import SubmissionStatus
 from journalcheck.utils import clean_text, parse_key_value_rows
+from journalcheck.server.adapters import AuthenticationError, ParseError
 
 
 class AHAChecker(SiteChecker):
     site_name = "aha"
 
-    def __init__(self, base_url: str, username: str, password: str, site_name: str = "aha") -> None:
+    def __init__(self, base_url: str, username: str, password: str, site_name: str = "aha", session=None, include_inactive: bool = False, strict: bool = False) -> None:
         self.base_url = base_url
         parts = urlsplit(base_url)
         self.root_url = f"{parts.scheme}://{parts.netloc}/"
         self.username = username
         self.password = password
         self.site_name = site_name
-        self.session = make_session()
+        self.session = session if session is not None else make_session()
+        self.include_inactive = include_inactive
+        self.strict = strict
 
     def check(self) -> list[SubmissionStatus]:
         home = self._login()
         home_soup = BeautifulSoup(home.text, "lxml")
         folder_urls = self._find_folder_urls(home_soup)
         if not folder_urls:
+            if self.strict:
+                raise ParseError("AHA manuscript folders were not recognized.")
             return []
 
         statuses_by_key: dict[str, SubmissionStatus] = {}
@@ -40,11 +47,17 @@ class AHAChecker(SiteChecker):
                 for link in folder_soup.select("a[href]")
                 if clean_text(link.get_text(" ", strip=True)).startswith("View Manuscript #")
             ]
+            if self.strict and not detail_links and not self._has_explicit_empty_state(folder_soup):
+                raise ParseError(f"AHA {folder_name} page has no manuscript links and no explicit empty state.")
 
             for detail_url in detail_links:
                 status = self._parse_manuscript(detail_url, folder_name)
                 if status is None:
+                    if self.strict:
+                        raise ParseError("AHA manuscript detail lacked both manuscript number and title.")
                     continue
+                if self.strict and (not status.manuscript_number or not status.status):
+                    raise ParseError("AHA manuscript detail is missing manuscript number or status.")
                 dedupe_key = status.key() if status.manuscript_number else detail_url
                 if dedupe_key not in statuses_by_key:
                     statuses_by_key[dedupe_key] = status
@@ -69,8 +82,15 @@ class AHAChecker(SiteChecker):
         response.raise_for_status()
         response_soup = BeautifulSoup(response.text, "lxml")
         if not self._find_folder_urls(response_soup):
+            if self.strict:
+                raise AuthenticationError(f"AHA login could not be confirmed for {self.site_name}.")
             raise RuntimeError(f"AHA login appears to have failed for {self.site_name}.")
         return response
+
+    @staticmethod
+    def _has_explicit_empty_state(soup: BeautifulSoup) -> bool:
+        text = clean_text(soup.get_text(" ", strip=True)).lower()
+        return bool(re.search(r"\b(?:no|there are no|you have no)\s+(?:active\s+|live\s+|post decision\s+)?(?:manuscripts|submissions|records)\b", text))
 
     def _find_folder_urls(self, soup: BeautifulSoup) -> dict[str, str]:
         folders: dict[str, str] = {}

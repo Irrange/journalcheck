@@ -148,3 +148,10 @@ powershell -ExecutionPolicy Bypass -File .\build_exe.ps1
 ## 支持更多投稿平台
 
 如果你需要支持其他投稿平台，请提交 issue，并说明平台名称以及你希望跟踪的状态页或工作流。
+
+## DS 私有网页服务
+
+现已支持 Linux 后台常驻及中文手机/电脑网页管理，复用 AHA、EM、BMC 适配器，
+提供加密账号配置、SQLite 历史、独立后台检查和通知重试，通过 Tailscale 身份及管理密码访问。
+安装、首次登录和备份恢复见 [SERVER.md](SERVER.md)，当前验收状态见 [VALIDATION.md](VALIDATION.md)。
+Windows GUI 和 CLI 继续可用。

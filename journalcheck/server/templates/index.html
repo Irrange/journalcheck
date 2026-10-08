@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#10243a">
+  <meta name="base-path" content="{{ base_path }}">
+  <meta name="gateway-mode" content="{{ 'true' if gateway_mode else 'false' }}">
+  <title>期刊稿件追踪</title>
+  <link rel="icon" type="image/svg+xml" href="{{ base_path }}/static/journalcheck.svg">
+  <link rel="stylesheet" href="{{ base_path }}/static/app.css?v=20261008-auto-login-archive">
+  <script defer src="{{ base_path }}/static/app.js?v=20261008-auto-login-archive"></script>
+</head>
+<body>
+  <main id="app" class="app-root">
+    <section id="auth-view" class="auth-view{{ ' hidden' if gateway_mode else '' }}" aria-live="polite">
+      <div class="auth-card">
+        <img class="brand-mark" src="{{ base_path }}/static/journalcheck.svg" alt="journalcheck" width="40" height="40">
+        <p class="eyebrow">JOURNAL CHECK</p>
+        <h1 id="auth-title">期刊稿件追踪</h1>
+        <p id="auth-intro" class="muted">登录以查看投稿、审稿进度和提醒。</p>
+        <form id="login-form" class="stack-form">
+          <label>管理密码<input name="password" type="password" autocomplete="current-password" required></label>
+          <button class="button primary full" type="submit">登录</button>
+        </form>
+        <form id="password-form" class="stack-form hidden">
+          <label>当前密码<input name="old_password" type="password" autocomplete="current-password" required></label>
+          <label>新密码<input name="new_password" type="password" autocomplete="new-password" minlength="12" required></label>
+          <p class="field-hint">请设置至少 12 位的新密码。修改后需要重新登录。</p>
+          <button class="button primary full" type="submit">修改密码</button>
+        </form>
+        <p id="auth-error" class="notice error hidden" role="alert"></p>
+      </div>
+    </section>
+
+    <section id="workspace" class="workspace hidden">
+      <aside class="sidebar">
+        <a class="brand" href="#submissions" aria-label="期刊稿件追踪首页">
+          <img class="brand-mark" src="{{ base_path }}/static/journalcheck.svg" alt="" width="40" height="40"><span><strong>期刊稿件追踪</strong><small>Journal Check</small></span>
+        </a>
+        <nav id="primary-nav" class="primary-nav" aria-label="主导航">
+          <a href="#submissions" data-tab="submissions"><span class="nav-icon">▤</span>投稿<span class="nav-count" id="nav-active-count"></span></a>
+          <a href="#accounts" data-tab="accounts"><span class="nav-icon">◎</span>期刊与账号</a>
+          <a href="#jobs" data-tab="jobs"><span class="nav-icon">↻</span>任务</a>
+          <a href="#notifications" data-tab="notifications"><span class="nav-icon">♧</span>通知</a>
+          <a href="#archive" data-tab="archive"><span class="nav-icon">▣</span>归档</a>
+          <a href="#settings" data-tab="settings"><span class="nav-icon">⚙</span>设置</a>
+        </nav>
+        <div class="sidebar-footer"><span class="health-dot" id="worker-dot"></span><span id="worker-label">服务状态加载中</span></div>
+      </aside>
+
+      <div class="main-column">
+        <header class="topbar">
+          <div><span class="eyebrow">WORKSPACE</span><h1 id="page-title">投稿</h1></div>
+          <div class="topbar-actions"><span id="last-updated" class="muted small"></span><button id="refresh-button" class="button secondary" type="button">刷新全部</button><button id="logout-button" class="button quiet" type="button">退出</button></div>
+        </header>
+        <div id="global-message" class="global-message hidden" role="status"></div>
+        <section id="view-submissions" class="view"></section>
+        <section id="view-accounts" class="view hidden"></section>
+        <section id="view-jobs" class="view hidden"></section>
+        <section id="view-notifications" class="view hidden"></section>
+        <section id="view-archive" class="view hidden"></section>
+        <section id="view-settings" class="view hidden"></section>
+      </div>
+    </section>
+  </main>
+
+  <dialog id="account-dialog" class="dialog account-dialog">
+    <form id="account-form" class="dialog-card" method="dialog">
+      <div class="dialog-heading"><div><span class="eyebrow">ACCOUNT</span><h2 id="account-dialog-title">添加投稿账号</h2></div><button class="icon-button" type="button" data-close-dialog="account-dialog" aria-label="关闭">×</button></div>
+      <input type="hidden" name="id">
+      <div class="form-grid">
+        <label>账号名称／备注（可选）<input name="name" maxlength="120" placeholder="留空使用登录账号"></label>
+        <label>投稿平台<select name="platform" required><option value="bmc">BMC / Springer Nature</option><option value="em">Editorial Manager</option><option value="scholarone">ScholarOne</option><option value="aha">AHA Journals</option></select></label>
+        <label class="platform-field field-username"><span id="username-label">登录用户名</span><input name="username" required autocomplete="username"></label>
+        <label class="platform-field field-password"><span id="password-label">登录密码</span><input name="password" type="password" autocomplete="new-password"><small id="password-help" class="field-hint">编辑时留空可保留已保存密码。</small></label>
+        <label class="platform-field field-login-method">BMC 登录方式<select name="login_method"><option value="password">邮箱和密码</option><option value="orcid">ORCID</option></select></label>
+        <label class="platform-field field-base-url"><span id="base-url-label">平台网址</span><input name="base_url" type="url" placeholder="https://…"><small id="base-url-help" class="field-hint"></small></label>
+        <label class="platform-field field-journal-name wide-field">期刊显示名称（可选）<input name="journal_name" maxlength="120" placeholder="留空采用抓取的期刊名称或期刊代码"></label>
+        <p class="field-hint wide-field" id="account-flow-help">先保存登录资料，再在账号内添加文章。保存不会登录投稿系统。</p>
+      </div>
+      <p id="account-form-error" class="notice error hidden" role="alert"></p>
+      <div class="dialog-actions"><button class="button secondary" type="button" data-close-dialog="account-dialog">取消</button><button class="button primary" type="submit">保存账号</button></div>
+    </form>
+  </dialog>
+
+  <dialog id="target-dialog" class="dialog account-dialog">
+    <form id="target-form" class="dialog-card">
+      <div class="dialog-heading"><div><span class="eyebrow">ARTICLES</span><h2 id="target-dialog-title">添加文章</h2><p id="target-dialog-intro" class="muted"></p></div><button class="icon-button" type="button" data-close-dialog="target-dialog" aria-label="关闭">×</button></div>
+      <input type="hidden" name="account_id"><input type="hidden" name="target_id">
+      <div class="form-grid"><label class="wide-field">投稿详情链接<textarea name="urls" rows="5" required placeholder="https://submission.springernature.com/submission-details/…"></textarea><small id="target-help" class="field-hint">每行一个，可一次添加多篇文章；同一账号最多追踪 30 篇。</small></label></div>
+      <p id="target-form-error" class="notice error hidden" role="alert"></p>
+      <div class="dialog-actions"><button class="button secondary" type="button" data-close-dialog="target-dialog">取消</button><button class="button primary" type="submit" id="target-submit">添加文章</button></div>
+    </form>
+  </dialog>
+
+  <dialog id="submission-dialog" class="dialog submission-dialog"><article id="submission-detail" class="dialog-card"></article></dialog>
+</body>
+</html>

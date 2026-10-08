@@ -150,3 +150,11 @@ Supported channels:
 
 If you need support for another submission platform, please open an issue and
 include the platform name plus the status page or workflow you want to track.
+
+## Private Linux web service
+
+A persistent Linux service with a Chinese, mobile-friendly management UI is available.
+It supports the existing AHA, Editorial Manager and BMC adapters, encrypted account settings,
+SQLite history, a separate worker, per-channel notification retries and Tailscale plus admin-password access.
+See [SERVER.md](SERVER.md) for DS installation, first login, backup and recovery, and
+[VALIDATION.md](VALIDATION.md) for the current verification status. The Windows GUI and CLI remain available.

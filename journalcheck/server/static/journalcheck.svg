@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
+  <title>journalcheck</title>
+  <rect width="64" height="64" rx="16" fill="#10243a"/>
+  <path d="M16 15a4 4 0 0 1 4-4h19l10 10v28a4 4 0 0 1-4 4H20a4 4 0 0 1-4-4V15Z" fill="#f5faf9"/>
+  <path d="M39 11v7a3 3 0 0 0 3 3h7" fill="#b9d8d5"/>
+  <path d="M24 25h11M24 32h9" stroke="#647f8c" stroke-width="3" stroke-linecap="round"/>
+  <circle cx="44" cy="45" r="14" fill="#38b5a0" stroke="#10243a" stroke-width="3"/>
+  <path d="m37.5 45 4.5 4.5 8-9" stroke="#fff" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>
