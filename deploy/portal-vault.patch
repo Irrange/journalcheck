@@ -1,0 +1,178 @@
+--- a/auth/app.py
++++ b/auth/app.py
+@@ -124,6 +124,39 @@
+         if not token or not secrets.compare_digest(token, current["csrf"]):
+             raise HTTPException(403, "请求验证失败，请重新登录。")
+ 
++    @app.post('/portal-auth/vault/{action}')
++    async def vault_action(action: str, request: Request):
++        if action not in ('unlock', 'lock'):
++            raise HTTPException(404, '操作不存在。')
++        current = session_for(request)
++        if not current:
++            raise HTTPException(401, '请先登录。')
++        if not same_origin(request):
++            raise HTTPException(403, '请求来源不匹配。')
++        require_csrf(request, current)
++        if action == 'unlock':
++            cutoff = time.monotonic() - 300
++            app.state.failures = [stamp for stamp in app.state.failures if stamp > cutoff]
++            if len(app.state.failures) >= 10:
++                raise HTTPException(429, '验证尝试过多，请五分钟后重试。')
++            if len(await request.body()) > 4096:
++                raise HTTPException(413, '请求过大。')
++            try:
++                data = await request.json()
++            except (ValueError, UnicodeError):
++                raise HTTPException(422, '请求格式无效。') from None
++            password = data.get('password') if isinstance(data, dict) else None
++            if not isinstance(password, str) or len(password) > 512 or not store.check_password(password):
++                app.state.failures.append(time.monotonic())
++                raise HTTPException(403, '门户密码不正确。')
++            app.state.failures.clear()
++        try:
++            until = store.set_vault(current, action == 'unlock')
++        except ValueError:
++            raise HTTPException(401, '登录已失效，请重新登录。') from None
++        return JSONResponse({'unlocked': until > time.time(), 'expires_at': until},
++                            headers={'Cache-Control':'no-store'})
++
+     @app.post("/portal-auth/logout")
+     def logout(request: Request):
+         current = session_for(request)
+@@ -247,7 +280,7 @@
+             login_name = store.meta("login", "owner")
+             sid = current["token_hash"]
+             headers["X-Journal-Gateway"] = sign_gateway(
+-                gateway_key, login_name, sid, int(time.time())
++                gateway_key, login_name, sid, int(time.time()), store.vault_until(current)
+             )
+         return JSONResponse({"ok": True}, headers=headers)
+ 
+--- a/auth/security.py
++++ b/auth/security.py
+@@ -68,8 +68,10 @@
+     return key
+ 
+ 
+-def sign_gateway(key: bytes, login: str, sid: str, now: int) -> str:
++def sign_gateway(key: bytes, login: str, sid: str, now: int, vault_until: int = 0) -> str:
+     payload = {"v": 1, "sub": login, "sid": sid, "iat": now, "exp": now + GATEWAY_TTL}
++    if vault_until > now:
++        payload['vault_until'] = min(vault_until, now + 300)
+     body = b64url(json.dumps(payload, separators=(",", ":"), sort_keys=True).encode())
+     signature = hmac.new(key, f"{GATEWAY_VERSION}.{body}".encode(), hashlib.sha256).digest()
+     return f"{GATEWAY_VERSION}.{body}.{b64url(signature)}"
+--- a/auth/store.py
++++ b/auth/store.py
+@@ -30,6 +30,7 @@
+   created_at INTEGER NOT NULL,
+   action TEXT NOT NULL,
+   detail TEXT);
++CREATE TABLE IF NOT EXISTS vault_unlocks(sid TEXT PRIMARY KEY, expires_at INTEGER NOT NULL);
+ """
+ 
+ 
+@@ -135,11 +136,13 @@
+             return
+         with self.db() as db:
+             db.execute("DELETE FROM sessions WHERE token_hash=?", (token_hash(token),))
++            db.execute("DELETE FROM vault_unlocks WHERE sid=?", (token_hash(token),))
+             self.audit(db, "logout")
+ 
+     def revoke_all(self) -> None:
+         with self.db() as db:
+             db.execute("DELETE FROM sessions")
++            db.execute("DELETE FROM vault_unlocks")
+             self.audit(db, "revoke_all")
+ 
+     def change_password(self, old: str, new: str) -> None:
+@@ -153,5 +156,24 @@
+             db.execute("UPDATE meta SET value=? WHERE key='password_hash'", (hash_password(new),))
+             db.execute("UPDATE meta SET value='0' WHERE key='must_change_password'")
+             db.execute("DELETE FROM sessions")
++            db.execute("DELETE FROM vault_unlocks")
+             self.audit(db, "password_changed")
+         (self.root / "initial-password.txt").unlink(missing_ok=True)
++
++    def vault_until(self, current) -> int:
++        with self.db() as db:
++            row = db.execute('SELECT expires_at FROM vault_unlocks WHERE sid=?',
++                             (current['token_hash'],)).fetchone()
++        return min(row[0], current['expires_at']) if row else 0
++
++    def set_vault(self, current, unlock: bool) -> int:
++        until = min(now() + 300, current['expires_at']) if unlock else 0
++        with self.db() as db:
++            # Recheck after password verification in case logout/change raced it.
++            if not db.execute('SELECT 1 FROM sessions WHERE token_hash=? AND expires_at>?',
++                              (current['token_hash'], now())).fetchone():
++                raise ValueError('登录已失效，请重新登录。')
++            db.execute('DELETE FROM vault_unlocks WHERE expires_at<=?', (now(),))
++            db.execute('INSERT OR REPLACE INTO vault_unlocks VALUES (?,?)', (current['token_hash'], until))
++            self.audit(db, 'vault_unlock' if unlock else 'vault_lock')
++        return until
+--- a/Caddyfile
++++ b/Caddyfile
+@@ -42,7 +42,7 @@
+ 
+ 		# Authenticated portal-auth routes (file bootstrap, password change) are
+ 		# handled by the gateway service after verification.
+-		@authapp path /portal-auth/files /portal-auth/password
++		@authapp path /portal-auth/files /portal-auth/password /portal-auth/vault/unlock /portal-auth/vault/lock
+ 		handle @authapp {
+ 			reverse_proxy 127.0.0.1:18201 {
+ 				header_up X-Forwarded-For {client_ip}
+--- /dev/null
++++ b/tests/test_vault.py
+@@ -0,0 +1,50 @@
++import time
++
++from auth.security import verify_gateway, COOKIE_NAME
++from test_portal_auth import portal, login, fwd, ORIGIN, OWNER
++
++
++def proof(client,app):
++    r=client.get('/verify',headers=fwd('/journal/api/vault/status',accept='application/json'))
++    if r.status_code!=200:return None
++    return verify_gateway(app.state.gateway_key,r.headers['X-Journal-Gateway'],OWNER,int(time.time()))
++
++
++def test_unlock_proof_is_current_session_bound_expiring_and_revocable(portal):
++    client,store,password,app,_=portal
++    csrf=login(client,password);headers={'Origin':ORIGIN,'X-CSRF-Token':csrf}
++    assert not proof(client,app).get('vault_until')
++    endpoint='/portal-auth/vault/unlock'
++    assert client.post(endpoint,json={'password':password},headers={'Origin':ORIGIN}).status_code==403
++    assert client.post(endpoint,json={'password':password},headers={**headers,'Origin':'https://evil.test'}).status_code==403
++    assert client.post(endpoint,json={'password':'wrong'},headers=headers).status_code==403
++    assert client.post(endpoint,json={'password':password},headers=headers).status_code==200
++    current=proof(client,app);assert 0 < current['vault_until']-time.time() <= 300
++    token=client.cookies.get(COOKIE_NAME)
++    with store.db() as db:db.execute('UPDATE vault_unlocks SET expires_at=?',(int(time.time())-1,))
++    assert not proof(client,app).get('vault_until')
++    client.post(endpoint,json={'password':password},headers=headers)
++    client.post('/portal-auth/vault/lock',json={},headers=headers)
++    assert not proof(client,app).get('vault_until')
++    client.post(endpoint,json={'password':password},headers=headers)
++    # A different login session never inherits the first one's grant.
++    other_csrf=login(client,password)
++    assert not proof(client,app).get('vault_until')
++    client.cookies.set(COOKIE_NAME,token,domain='portal.example.test',path='/')
++    assert proof(client,app).get('vault_until')
++    client.post('/portal-auth/logout',headers=headers)
++    assert proof(client,app) is None
++
++
++def test_password_change_revokes_vault_and_rate_limit(portal):
++    client,store,password,app,_=portal
++    csrf=login(client,password);headers={'Origin':ORIGIN,'X-CSRF-Token':csrf};endpoint='/portal-auth/vault/unlock'
++    for _ in range(10):assert client.post(endpoint,json={'password':'wrong'},headers=headers).status_code==403
++    assert client.post(endpoint,json={'password':password},headers=headers).status_code==429
++    app.state.failures.clear()
++    assert client.post(endpoint,json={'password':password},headers=headers).status_code==200
++    response=client.post('/portal-auth/password',json={'old_password':password,'new_password':'new-long-synthetic-password'},headers=headers)
++    assert response.status_code==200 and proof(client,app) is None
++    login(client,'new-long-synthetic-password')
++    assert not proof(client,app).get('vault_until')
++    with store.db() as db:assert not db.execute('SELECT * FROM vault_unlocks').fetchall()

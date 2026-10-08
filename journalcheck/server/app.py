@@ -630,5 +630,7 @@ def create_app(root: Path | None = None) -> FastAPI:
             writer.writerow({k:("'"+str(row.get(k,'')) if str(row.get(k,'')).startswith(('=','+','-','@','\t','\r')) else row.get(k,'')) for k in keys})
         return Response('\ufeff'+output.getvalue(),media_type='text/csv',
                         headers={'Content-Disposition':f'attachment; filename="journalcheck-{kind}.csv"'})
+    from .vault import install_vault
+    install_vault(app, store, session, gateway_identity, json_object)
     app.add_middleware(ExternalPrefixMiddleware)
     return app

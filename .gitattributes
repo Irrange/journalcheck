@@ -1,0 +1,2 @@
+# Unified diffs deliberately contain space-prefixed blank context lines.
+deploy/*.patch -whitespace

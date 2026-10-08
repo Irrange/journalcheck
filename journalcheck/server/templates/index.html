@@ -8,8 +8,9 @@
   <meta name="gateway-mode" content="{{ 'true' if gateway_mode else 'false' }}">
   <title>期刊稿件追踪</title>
   <link rel="icon" type="image/svg+xml" href="{{ base_path }}/static/journalcheck.svg">
-  <link rel="stylesheet" href="{{ base_path }}/static/app.css?v=20261008-auto-login-archive">
-  <script defer src="{{ base_path }}/static/app.js?v=20261008-auto-login-archive"></script>
+  <link rel="stylesheet" href="{{ base_path }}/static/app.css?v=20261008-vault">
+  <script defer src="{{ base_path }}/static/vault.js?v=20261008-vault"></script>
+  <script defer src="{{ base_path }}/static/app.js?v=20261008-vault"></script>
 </head>
 <body>
   <main id="app" class="app-root">
@@ -41,6 +42,7 @@
         <nav id="primary-nav" class="primary-nav" aria-label="主导航">
           <a href="#submissions" data-tab="submissions"><span class="nav-icon">▤</span>投稿<span class="nav-count" id="nav-active-count"></span></a>
           <a href="#accounts" data-tab="accounts"><span class="nav-icon">◎</span>期刊与账号</a>
+          <a href="#vault" data-tab="vault"><span class="nav-icon">⚿</span>密码库</a>
           <a href="#jobs" data-tab="jobs"><span class="nav-icon">↻</span>任务</a>
           <a href="#notifications" data-tab="notifications"><span class="nav-icon">♧</span>通知</a>
           <a href="#archive" data-tab="archive"><span class="nav-icon">▣</span>归档</a>
@@ -57,6 +59,7 @@
         <div id="global-message" class="global-message hidden" role="status"></div>
         <section id="view-submissions" class="view"></section>
         <section id="view-accounts" class="view hidden"></section>
+        <section id="view-vault" class="view hidden"></section>
         <section id="view-jobs" class="view hidden"></section>
         <section id="view-notifications" class="view hidden"></section>
         <section id="view-archive" class="view hidden"></section>
@@ -95,5 +98,19 @@
   </dialog>
 
   <dialog id="submission-dialog" class="dialog submission-dialog"><article id="submission-detail" class="dialog-card"></article></dialog>
+  <dialog id="vault-unlock-dialog" class="dialog account-dialog">
+    <form id="vault-unlock-form" class="dialog-card">
+      <h2>解锁账号密码库</h2><p class="muted">输入{{ '门户' if gateway_mode else '管理' }}密码。当前会话解锁 5 分钟。</p>
+      <label>{{ '门户' if gateway_mode else '管理' }}密码<input name="password" type="password" autocomplete="current-password" maxlength="512" required></label>
+      <p id="vault-unlock-error" class="error-text" role="alert"></p>
+      <div class="dialog-actions"><button type="button" class="button secondary" data-vault-action="cancel">取消</button><button type="submit" class="button primary">解锁</button></div>
+    </form>
+  </dialog>
+  <dialog id="vault-secret-dialog" class="dialog account-dialog">
+    <div class="dialog-card"><h2 id="vault-secret-title">账号密码</h2><p class="muted">最多显示 30 秒；关闭或切换页面立即隐藏。</p>
+      <label>已保存密码<input id="vault-secret-value" type="text" readonly autocomplete="off" spellcheck="false"></label>
+      <div class="dialog-actions"><button type="button" class="button secondary" data-vault-action="hide">隐藏并关闭</button><button type="button" class="button primary" data-vault-action="copy-visible">复制密码</button></div>
+    </div>
+  </dialog>
 </body>
 </html>

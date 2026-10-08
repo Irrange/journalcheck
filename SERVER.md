@@ -154,3 +154,35 @@ node --check journalcheck/server/static/app.js
 ```
 
 诊断只读生产数据库中的已保存账号，在隔离临时目录中从零 Cookie 自动登录，再复用加密会话抓取第二次。它只输出成功状态和稿件数量，不更新生产数据、不发通知、不输出稿件编号或秘密，退出后清理临时资料。安全验证或认证失败会返回非零退出码。
+
+## 账号密码库
+
+导航中的“密码库”集中展示现有期刊账号；支持搜索、平台与归档筛选。BMC 账号只显示一条，不按文章重复；EM、ScholarOne 同用户名的不同期刊仍各自保留。列表和账号编辑表单不返回密码。
+
+点击查看或复制密码前，输入当前门户密码（独立部署则为 journalcheck 管理密码）。每个登录会话独立解锁 5 分钟，查询不会延长有效期；可立即锁定。明文仅经受保护的 POST 接口返回所选账号，最多显示 30 秒，关闭窗口、切页或页面进入后台时清除展示。退出／修改管理密码使会话及解锁权限失效；其它已打开标签页通过后续鉴权与轮询清除显示。复制成功后剪贴板由设备管理，不承诺自动擦除系统剪贴板。
+
+编辑复用原账号配置，空密码保留原值，修改登录凭据后暂停并要求验证。归档账号可以查看；删除账号后不能再取回当前凭据，已有备份按原保留策略处理。查看／复制记录只含时间、操作和账号关联，不含秘密。密码、解锁密码不保存到浏览器持久存储、URL、日志或 CSV；响应禁止缓存。
+
+这仍是服务端加密保管：后台需要原密钥解密才能自动检查。拥有服务器用户权限和密钥的人能访问凭据。
+
+### 门户配套更新
+
+DS 的门户源代码独立于本仓库。`deploy/portal-vault.patch` 包含本功能所需的最小门户改动及合成测试：会话级解锁表、Origin／CSRF／密码验证、签名上下文中的短期查看权限，以及两条受认证的路由。不复制门户密码散列至 journalcheck。
+
+更新前备份门户代码、Caddyfile、门户数据库和 journalcheck 数据库／密钥。对**尚未应用**此扩展的兼容门户目录先检查补丁（已有改动时不要重复应用）：
+
+```bash
+patch --dry-run -p1 -d /path/to/server-portal < deploy/portal-vault.patch
+patch -p1 -d /path/to/server-portal < deploy/portal-vault.patch
+```
+
+运行门户认证测试、journalcheck 测试及 Caddy 配置校验。验证后重启 `server-portal-auth`、`journalcheck-web`，再重启 `server-portal` 使新增路由生效；worker 无需重启。现有 DS 的 Caddy 管理接口关闭，重启会让现有网页连接短暂重连。回滚时恢复原三份门户模块和 Caddyfile、上一版 journalcheck 网页源码，再重启对应服务；新增解锁表可保留，原账号和后台抓取不依赖该表。
+
+额外验证命令：
+
+```bash
+.venv/bin/python -m pytest tests/test_vault.py -q
+.venv/bin/python tests/browser_vault.py
+```
+
+浏览器集成测试需要相邻的 `server-portal` 源码及其 Caddy 二进制；它启动隔离端口及合成数据库，不使用生产账号。

@@ -7,7 +7,7 @@
   const $ = (selector, root = document) => root.querySelector(selector);
   const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
   const state = { csrf: '', tab: 'submissions', accounts: [], submissions: [], archived: [], jobs: [], notifications: [], health: null, settings: null, loaded: false, timer: null, filters: { search: '', platform: '', status: '' }, management: null, activeJob: null, polling: false };
-  const titles = { submissions: '投稿总览', accounts: '期刊与账号', jobs: '任务', notifications: '通知', archive: '归档', settings: '设置' };
+  const titles = { submissions: '投稿总览', accounts: '期刊与账号', vault: '账号密码库', jobs: '任务', notifications: '通知', archive: '归档', settings: '设置' };
 
   function node(tag, cls, text) {
     const n = document.createElement(tag);
@@ -123,7 +123,7 @@
     return data;
   }
   const send = (path, method, data = {}) => request(path, { method, body: JSON.stringify(data) });
-  function showWorkspace(on) { show($('#workspace'), on); show($('#auth-view'), !on); }
+  function showWorkspace(on) { if(!on)window.JournalVault?.hide(); show($('#workspace'), on); show($('#auth-view'), !on); }
   function setAuthMode(changePassword, message = '') {
     showWorkspace(false);
     show($('#login-form'), !changePassword); show($('#password-form'), changePassword);
@@ -157,6 +157,7 @@
     finally { btn.disabled = false; }
   });
   $('#logout-button').addEventListener('click', async () => {
+    window.JournalVault?.hide();
     if (gatewayMode) { window.location.assign('/portal-auth/logout'); return; }
     try { await send('/logout', 'POST', {}); } catch {} stopPolling();state.activeJob=null;state.csrf = ''; $('#login-form').reset();$('#password-form').reset();accountForm.elements.password.value='';setAuthMode(false, '已退出登录。');
   });
@@ -164,6 +165,7 @@
   async function loadTab(tab, quiet = false) {
     if (tab.startsWith('accounts/')) { const id=tab.split('/')[1]; state.management={...(state.management||{origin:'accounts',scroll:0,section:'articles'}),id}; tab='accounts'; }
     if (!Object.hasOwn(titles, tab)) tab = 'submissions';
+    if(tab!=='vault')window.JournalVault?.hide();
     state.tab = tab; history.replaceState(null, '', tab==='accounts'&&state.management?`#accounts/${state.management.id}`:`#${tab}`); setText('#page-title', titles[tab]);
     $$('#primary-nav a').forEach(a => a.classList.toggle('selected', a.dataset.tab === tab));
     $$('.view').forEach(v => show(v, v.id === `view-${tab}`));
@@ -172,6 +174,7 @@
       if (tab === 'submissions') await Promise.all([loadSubmissions(false), loadHealth(), loadAccounts()]);
       if (tab === 'archive') await loadSubmissions(true);
       if (tab === 'accounts') { await Promise.all([loadSubmissions(false),loadHealth()]); await loadAccounts(); }
+      if (tab === 'vault') await window.JournalVault.show();
       if (tab === 'jobs') await loadJobs();
       if (tab === 'notifications') await Promise.all([loadNotifications(), loadSettings()]);
       if (tab === 'settings') await Promise.all([loadSettings(), loadHealth()]);
@@ -545,6 +548,8 @@
     try {const saved=await send(id?`/accounts/${encodeURIComponent(id)}`:'/accounts',id?'PATCH':'POST',data);accountForm.elements.password.value='';$('#account-dialog').close();await loadAccounts();await loadSubmissions(false);flash(id?(saved.enabled?'资料已更新，监测继续。':'资料已保存；确认文章后验证并启用。'):'账号已保存。');if(!id)await openManagement(saved.id);}
     catch(err){setText('#account-form-error',err.message);show($('#account-form-error'));}finally{submit.disabled=false;}
   });
+  $('#account-dialog').addEventListener('close',()=>{accountForm.elements.password.value='';window.JournalVault?.changed();});
+  document.addEventListener('vault-edit',async e=>{try{await loadAccounts();const row=state.accounts.find(a=>a.id===e.detail);if(row)openAccount(row);}catch{flash('账号读取失败。','error');}});
   const targetForm=$('#target-form');
   function openTarget(account,target=null) {
     targetForm.reset();targetForm.elements.account_id.value=account.id;targetForm.elements.target_id.value=target?.id||'';targetForm.elements.urls.value=target?.url||'';
