@@ -273,10 +273,8 @@
     const host=$('#overview-groups');if(!host)return;host.replaceChildren();
     for(const group of sourceGroups()){
       if(state.filters.platform&&group.platform!==state.filters.platform)continue;
-      const accounts=group.accounts.filter(a=>{
-        const rows=state.submissions.filter(r=>r.account_id===a.id);
-        return rows.some(r=>matchesSubmission(r,a))||(!state.filters.status&&!state.filters.search)||(!state.filters.status&&[group.title,a.name,a.username].join(' ').toLowerCase().includes(state.filters.search.trim().toLowerCase()));
-      });if(!accounts.length)continue;
+      const accounts=group.accounts.filter(a=>state.submissions.some(r=>r.account_id===a.id&&matchesSubmission(r,a)));
+      if(!accounts.length)continue;
       const box=panel(group.title,group.platform==='bmc'?'BMC / Springer Nature · 账号下管理多篇文章':`${platformName(group.platform)} · 按期刊管理`);box.panel.classList.add('source-group');box.panel.dataset.group=group.key;
       for(const account of accounts){
         const section=node('section','account-section');section.dataset.accountId=account.id;
@@ -299,7 +297,7 @@
         section.append(list);box.panel.append(section);
       }host.append(box.panel);
     }
-    if(!host.children.length){host.append(empty(state.accounts.length?'没有符合筛选条件的稿件或来源。':'还没有监测来源，先添加 BMC 账号或自动获取稿件的期刊。'),button('添加期刊／账号','new-account','button primary'));}
+    if(!host.children.length){host.append(empty(state.accounts.length?(state.submissions.length?'没有符合筛选条件的稿件。':'暂无当前稿件；期刊和账号可在“期刊与账号”中管理，有新稿件后会自动显示。'):'还没有监测来源，先添加 BMC 账号或自动获取稿件的期刊。'),button('添加期刊／账号','new-account','button primary'));}
   }
   function trackingUrl(row){return row?.metadata?.tracking_url||row?.detail_url||'';}
   function articleCard(row,account,target=null,management=false) {
